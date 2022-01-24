@@ -1,13 +1,12 @@
 import os
-import pdb
+import imageio
+import numpy as np
 import pandas as pd
 from bentoml import env, artifacts, api, BentoService
 from bentoml.adapters import DataframeInput, ImageInput
 from bentoml.frameworks.sklearn import SklearnModelArtifact
 from bentoml.frameworks.pytorch import PytorchModelArtifact
-import PIL.Image
-from werkzeug.utils import secure_filename
-
+from torchvision import transforms
 from models import binary_clf
 
 """
@@ -47,13 +46,15 @@ class CatDogClassifier(BentoService):
 
     @api(input=ImageInput(accept_image_formats=['.jpg', ".png", ".jpeg"]))
     #@api(input=NumpyNdarray(dtype="float32", enforce_dtype=True), batch=True)
-    def predict(self, file):
-        basepath = os.path.dirname(__file__)
-        file_path = os.path.join(basepath, 'uploads', secure_filename(file.filename))
-        file.save(file_path)
+    def predict(self, img):
+        covert_to_tensor = transforms.Compose([transforms.ToPILImage(), transforms.Resize((255, 255)), transforms.CenterCrop(224), transforms.ToTensor()])
+        img = covert_to_tensor(img)
+        prediction = self.artifacts.clf_model(img.unsqueeze(0))
+        preds = prediction.data.max(1, keepdim=True)[1]
 
-        img = PIL.Image.open(file_path)
+        if preds.item() == 1:
+            result = "Dog"
+        else:
+            result = 'Cat'
 
-        print(img)
-        result = self.artifacts.clf_model.predict(img)
-        return result
+        return {'Final Result': result, "Max_index": preds}
